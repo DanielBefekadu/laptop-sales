@@ -75,19 +75,20 @@ func getEnv(key, fallback string) string {
 }
 
 func connection() {
-	connectionString := getEnv("MONGODB_URI", defaultConnectionString)
-	dbName := getEnv("MONGODB_DB", defaultDBName)
+	connectionString := getEnv("MONGO_URI", "mongodb://mongodb:27017")
+	dbName := getEnv("MONGODB_DB", "laptopdb")
 
-	client, err := mongo.NewClient(options.Client().ApplyURI(connectionString))
-
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
-
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
-	err = client.Connect(ctx)
-
+	client, err := mongo.Connect(ctx, options.Client().ApplyURI(connectionString))
 	if err != nil {
-		log.Fatal("Could not connect to MongoDB. Check your firewall or credentials:", err)
+		log.Fatal("Mongo connection error:", err)
+	}
+
+	err = client.Ping(ctx, nil)
+	if err != nil {
+		log.Fatal("Mongo ping failed:", err)
 	}
 
 	db := client.Database(dbName)
@@ -96,15 +97,39 @@ func connection() {
 		Client: client,
 		Db:     db,
 	}
-
-	fmt.Println("Connected to MongoDB!")
-	_, err = mongoDataBase.Db.Collection("laptops").Indexes().CreateMany(context.Background(), []mongo.IndexModel{
-		{Keys: bson.D{{Key: "brand", Value: 1}}},
-		{Keys: bson.D{{Key: "price", Value: 1}}},
-		{Keys: bson.D{{Key: "ram", Value: 1}}},
-	})
-
 }
+
+// func connection() {
+// 	connectionString := getEnv("MONGODB_URI", defaultConnectionString)
+// 	dbName := getEnv("MONGODB_DB", defaultDBName)
+
+// 	client, err := mongo.NewClient(options.Client().ApplyURI(connectionString))
+
+// 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+
+// 	defer cancel()
+
+// 	err = client.Connect(ctx)
+
+// 	if err != nil {
+// 		log.Fatal("Could not connect to MongoDB. Check your firewall or credentials:", err)
+// 	}
+
+// 	db := client.Database(dbName)
+
+// 	mongoDataBase = MongoDataBase{
+// 		Client: client,
+// 		Db:     db,
+// 	}
+
+// 	fmt.Println("Connected to MongoDB!")
+// 	_, err = mongoDataBase.Db.Collection("laptops").Indexes().CreateMany(context.Background(), []mongo.IndexModel{
+// 		{Keys: bson.D{{Key: "brand", Value: 1}}},
+// 		{Keys: bson.D{{Key: "price", Value: 1}}},
+// 		{Keys: bson.D{{Key: "ram", Value: 1}}},
+// 	})
+
+// }
 
 func basicAuth(c *fiber.Ctx) error {
 	token := c.Get("Authorization")
