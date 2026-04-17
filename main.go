@@ -14,6 +14,12 @@ import (
 	"go.mongodb.org/mongo-driver/mongo/options"
 )
 
+type OrderItem struct {
+	LaptopID   primitive.ObjectID `json:"laptopId,omitempty" bson:"laptopId,omitempty"`
+	Quantity   int                `json:"quantity,omitempty" bson:"quantity,omitempty"`
+	TotalPrice float64            `json:"totalPrice,omitempty" bson:"totalPrice,omitempty"`
+}
+
 type RestockLaptop struct {
 	ID            primitive.ObjectID `json:"id,omitempty" bson:"_id,omitempty"`
 	LaptopID      primitive.ObjectID `json:"laptopId,omitempty" bson:"laptopId,omitempty"`
@@ -25,11 +31,14 @@ type RestockLaptop struct {
 }
 
 type OrderedLaptop struct {
-	ID        primitive.ObjectID `json:"id,omitempty" bson:"_id,omitempty"`
-	LaptopID  primitive.ObjectID `json:"laptopId,omitempty" bson:"laptopId,omitempty"`
-	Quantity  int                `json:"quantity,omitempty" bson:"quantity,omitempty"`
-	Status    string             `json:"status,omitempty" bson:"status,omitempty"`
-	CreatedAt time.Time          `json:"createdAt" bson:"createdAt"`
+	ID            primitive.ObjectID `json:"id,omitempty" bson:"_id,omitempty"`
+	LaptopID      primitive.ObjectID `json:"laptopId,omitempty" bson:"laptopId,omitempty"`
+	Quantity      int                `json:"quantity,omitempty" bson:"quantity,omitempty"`
+	Status        string             `json:"status,omitempty" bson:"status,omitempty"`
+	PaymentStatus string             `json:"paymentStatus,omitempty" bson:"paymentStatus,omitempty"`
+	TotalPrice    float64            `json:"totalPrice,omitempty" bson:"totalPrice,omitempty"`
+	TotalAmount   float64            `json:"totalAmount,omitempty" bson:"totalAmount,omitempty"`
+	CreatedAt     time.Time          `json:"createdAt" bson:"createdAt"`
 }
 
 type MongoDataBase struct {
@@ -62,8 +71,8 @@ type Order struct {
 var mongoDataBase MongoDataBase
 
 const (
-	defaultConnectionString = "mongodb+srv://kach:Wiz*3264@gotestcluster.wgks8f4.mongodb.net/"
-	defaultDBName           = "laptopdb"
+	defaultConnectionString = "####"
+	defaultDBName           = "####"
 )
 
 func getEnv(key, fallback string) string {
@@ -74,45 +83,21 @@ func getEnv(key, fallback string) string {
 	return value
 }
 
-func connection() {
-	connectionString := getEnv("MONGO_URI", "mongodb://mongodb:27017")
-	dbName := getEnv("MONGODB_DB", "laptopdb")
-
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-	defer cancel()
-
-	client, err := mongo.Connect(ctx, options.Client().ApplyURI(connectionString))
-	if err != nil {
-		log.Fatal("Mongo connection error:", err)
-	}
-
-	err = client.Ping(ctx, nil)
-	if err != nil {
-		log.Fatal("Mongo ping failed:", err)
-	}
-
-	db := client.Database(dbName)
-
-	mongoDataBase = MongoDataBase{
-		Client: client,
-		Db:     db,
-	}
-}
-
 // func connection() {
-// 	connectionString := getEnv("MONGODB_URI", defaultConnectionString)
-// 	dbName := getEnv("MONGODB_DB", defaultDBName)
+// 	connectionString := getEnv("MONGO_URI", "mongodb://mongodb:27017")
+// 	dbName := getEnv("MONGODB_DB", "laptopdb")
 
-// 	client, err := mongo.NewClient(options.Client().ApplyURI(connectionString))
-
-// 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
-
+// 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 // 	defer cancel()
 
-// 	err = client.Connect(ctx)
-
+// 	client, err := mongo.Connect(ctx, options.Client().ApplyURI(connectionString))
 // 	if err != nil {
-// 		log.Fatal("Could not connect to MongoDB. Check your firewall or credentials:", err)
+// 		log.Fatal("Mongo connection error:", err)
+// 	}
+
+// 	err = client.Ping(ctx, nil)
+// 	if err != nil {
+// 		log.Fatal("Mongo ping failed:", err)
 // 	}
 
 // 	db := client.Database(dbName)
@@ -121,15 +106,39 @@ func connection() {
 // 		Client: client,
 // 		Db:     db,
 // 	}
-
-// 	fmt.Println("Connected to MongoDB!")
-// 	_, err = mongoDataBase.Db.Collection("laptops").Indexes().CreateMany(context.Background(), []mongo.IndexModel{
-// 		{Keys: bson.D{{Key: "brand", Value: 1}}},
-// 		{Keys: bson.D{{Key: "price", Value: 1}}},
-// 		{Keys: bson.D{{Key: "ram", Value: 1}}},
-// 	})
-
 // }
+
+func connection() {
+	connectionString := getEnv("MONGODB_URI", defaultConnectionString)
+	dbName := getEnv("MONGODB_DB", defaultDBName)
+
+	client, err := mongo.NewClient(options.Client().ApplyURI(connectionString))
+
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+
+	defer cancel()
+
+	err = client.Connect(ctx)
+
+	if err != nil {
+		log.Fatal("Could not connect to MongoDB. Check your firewall or credentials:", err)
+	}
+
+	db := client.Database(dbName)
+
+	mongoDataBase = MongoDataBase{
+		Client: client,
+		Db:     db,
+	}
+
+	fmt.Println("Connected to MongoDB!")
+	_, err = mongoDataBase.Db.Collection("laptops").Indexes().CreateMany(context.Background(), []mongo.IndexModel{
+		{Keys: bson.D{{Key: "brand", Value: 1}}},
+		{Keys: bson.D{{Key: "price", Value: 1}}},
+		{Keys: bson.D{{Key: "ram", Value: 1}}},
+	})
+
+}
 
 func basicAuth(c *fiber.Ctx) error {
 	token := c.Get("Authorization")
@@ -137,6 +146,49 @@ func basicAuth(c *fiber.Ctx) error {
 		return c.Status(401).JSON(fiber.Map{"error": "Unauthorized"})
 	}
 	return c.Next()
+}
+
+func PayForOrder(c *fiber.Ctx) error {
+	id := c.Params("id")
+	objectId, err := primitive.ObjectIDFromHex(id)
+
+	if err != nil {
+		return fmt.Errorf("failed to parse ID: %w", err)
+	}
+
+	var order OrderedLaptop
+	err = mongoDataBase.Db.Collection("orders").FindOne(c.Context(), bson.M{"_id": objectId}).Decode(&order)
+
+	if err != nil {
+		return fmt.Errorf("failed to find order: %w", err)
+	}
+
+	if order.PaymentStatus == "Paid" {
+		return c.JSON(fiber.Map{"message": "Order already paid"})
+	}
+
+	if order.Status != "Pending" {
+		return c.JSON(fiber.Map{"message": "Order cannot be paid"})
+	}
+
+	filter := bson.M{"_id": objectId}
+	update := bson.M{
+		"$set": bson.M{
+			"paymentStatus": "Paid",
+			"status":        "Confirmed",
+		},
+	}
+
+	_, err = mongoDataBase.Db.Collection("orders").UpdateOne(c.Context(), filter, update)
+
+	if err != nil {
+		return fmt.Errorf("failed to update order: %w", err)
+	}
+
+	return c.JSON(fiber.Map{
+		"message": "Payment successful",
+	})
+
 }
 
 func FilterLaptops(c *fiber.Ctx) error {
@@ -217,6 +269,7 @@ func GetStatus(c *fiber.Ctx) error {
 
 	validStatuses := map[string]bool{
 		"Pending":   true,
+		"Confirmed": true,
 		"Shipped":   true,
 		"Delivered": true,
 		"Cancelled": true,
@@ -298,10 +351,6 @@ func OrderLaptop(c *fiber.Ctx) error {
 	var laptop Laptop
 	err = mongoDataBase.Db.Collection("laptops").FindOneAndUpdate(c.Context(), query, update, options).Decode(&laptop)
 
-	if laptop.Stock <= laptop.LowStockThreshold {
-		sendLaptopStockAlert(laptop.Stock, laptop.Brand, laptop.Model)
-	}
-
 	if err != nil {
 		if err == mongo.ErrNoDocuments {
 			return c.JSON(Order{Message: "Laptop is out of stock"})
@@ -309,11 +358,17 @@ func OrderLaptop(c *fiber.Ctx) error {
 		return fmt.Errorf("failed to update laptop stock: %w", err)
 	}
 
+	if laptop.Stock <= laptop.LowStockThreshold {
+		sendLaptopStockAlert(laptop.Stock, laptop.Brand, laptop.Model)
+	}
+
 	order := OrderedLaptop{
-		LaptopID:  laptop.ID,
-		Quantity:  1,
-		Status:    "Pending",
-		CreatedAt: time.Now(),
+		LaptopID:      laptop.ID,
+		Quantity:      1,
+		Status:        "Pending",
+		PaymentStatus: "Pending",
+		TotalPrice:    laptop.Price,
+		CreatedAt:     time.Now(),
 	}
 
 	insertResult, err := mongoDataBase.Db.Collection("orders").InsertOne(c.Context(), order)
@@ -328,7 +383,7 @@ func OrderLaptop(c *fiber.Ctx) error {
 
 		// Check if order is still pending
 		var pendingOrder OrderedLaptop
-		err := mongoDataBase.Db.Collection("orders").FindOne(ctx, bson.M{"_id": orderID, "status": "Pending"}).Decode(&pendingOrder)
+		err := mongoDataBase.Db.Collection("orders").FindOne(ctx, bson.M{"_id": orderID, "status": "Pending", "paymentStatus": "Pending"}).Decode(&pendingOrder)
 		if err == nil {
 			// Release stock
 			mongoDataBase.Db.Collection("laptops").UpdateOne(ctx, bson.M{"_id": laptopID}, bson.M{"$inc": bson.M{"stock": 1, "reserveStock": -1}})
@@ -582,6 +637,7 @@ func main() {
 	app.Get("/orders", basicAuth, GetAllOrders)
 	app.Get("/low-stock", basicAuth, LowStock)
 	app.Patch("/orders/:id/status", basicAuth, GetStatus)
+	app.Post("/orders/:id/pay", basicAuth, PayForOrder)
 
 	log.Printf("Server is running on port %s", port)
 	log.Fatal(app.Listen(":" + port))
