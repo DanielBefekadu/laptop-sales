@@ -19,7 +19,19 @@ pipeline {
         stage('OWASP Dependency Check') {
             steps {
                 catchError(buildResult: 'SUCCESS', stageResult: 'UNSTABLE') {
-                    echo 'OWASP Dependency Check - Skipped (NVD offline)'
+                    sh """
+                        ${OWASP_HOME}/bin/dependency-check.sh \
+                        --scan ./ \
+                        --format XML \
+                        --format HTML \
+                        --out ./reports \
+                        --disableYarnAudit \
+                        --disableNodeAudit \
+                        --disableRetireJS
+                    """
+                    dependencyCheckPublisher(
+                        pattern: '**/reports/dependency-check-report.xml'
+                    )
                 }
             }
         }
@@ -32,8 +44,7 @@ pipeline {
                             sonar-scanner \
                             -Dsonar.projectKey=${SONAR_PROJECT} \
                             -Dsonar.projectName=${SONAR_PROJECT} \
-                            -Dsonar.sources=. \
-                            -Dsonar.host.url=http://10.43.17.54:9000
+                            -Dsonar.sources=.
                         """
                     }
                 }
