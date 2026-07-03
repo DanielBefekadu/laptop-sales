@@ -25,7 +25,9 @@ pipeline {
                     --format HTML \
                     --out ./reports \
                     --disableYarnAudit \
-                    --disableNodeAudit
+                    --disableNodeAudit   \
+                    --noupdate \
+                    --nvdDatafeed https://nvd.nist.gov/feeds/json/cve/1.1/
                 """
                 dependencyCheckPublisher(
                     pattern: '**/reports/dependency-check-report.xml'
