@@ -27,7 +27,8 @@ pipeline {
                         --out ./reports \
                         --disableYarnAudit \
                         --disableNodeAudit \
-                        --disableRetireJS
+                        --disableRetireJS   \
+                        --nvdApiKey d37154df-b5ab-4db2-8c8f-40da80fbb91b
                     """
                     dependencyCheckPublisher(
                         pattern: '**/reports/dependency-check-report.xml'
