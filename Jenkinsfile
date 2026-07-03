@@ -1,12 +1,11 @@
 pipeline {
     agent any
-
     environment {
         DOCKER_IMAGE = "fjidani/my-app"
         DOCKER_TAG = "${BUILD_NUMBER}"
         SONAR_PROJECT = "my-app"
+        OWASP_HOME = "/var/jenkins_home/tools/org.jenkinsci.plugins.DependencyCheck.tools.DependencyCheckInstallation/OWASP-DC"
     }
-
     stages {
 
         stage('Git Checkout') {
@@ -19,12 +18,17 @@ pipeline {
 
         stage('OWASP Dependency Check') {
             steps {
-                dependencyCheck(
-                    additionalArguments: '--scan ./ --format XML',
-                    odcInstallation: 'OWASP-DC'
-                )
+                sh """
+                    ${OWASP_HOME}/bin/dependency-check.sh \
+                    --scan ./ \
+                    --format XML \
+                    --format HTML \
+                    --out ./reports \
+                    --disableYarnAudit \
+                    --disableNodeAudit
+                """
                 dependencyCheckPublisher(
-                    pattern: '**/dependency-check-report.xml'
+                    pattern: '**/reports/dependency-check-report.xml'
                 )
             }
         }
@@ -35,8 +39,9 @@ pipeline {
                     sh """
                         sonar-scanner \
                         -Dsonar.projectKey=${SONAR_PROJECT} \
+                        -Dsonar.projectName=${SONAR_PROJECT} \
                         -Dsonar.sources=. \
-                        -Dsonar.host.url=http://<sonarqube-ip>:9000
+                        -Dsonar.host.url=http://10.43.x.x:9000
                     """
                 }
             }
@@ -76,7 +81,7 @@ pipeline {
                     passwordVariable: 'DOCKER_PASS'
                 )]) {
                     sh """
-                        echo $DOCKER_PASS | docker login -u $DOCKER_USER --password-stdin
+                        echo \$DOCKER_PASS | docker login -u \$DOCKER_USER --password-stdin
                         docker push ${DOCKER_IMAGE}:${DOCKER_TAG}
                         docker tag ${DOCKER_IMAGE}:${DOCKER_TAG} ${DOCKER_IMAGE}:latest
                         docker push ${DOCKER_IMAGE}:latest
