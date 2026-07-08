@@ -1,5 +1,9 @@
 pipeline {
     agent any
+    environment {
+        DOCKER_IMAGE = "fjidani/laptop-sales-jenkins"
+        DOCKER_TAG = "${BUILD_NUMBER}"
+    }
     stages {
         stage('Git Checkout') {
             steps {
@@ -8,30 +12,33 @@ pipeline {
                     url: 'https://github.com/DanielBefekadu/laptop-sales.git'
             }
         }
-        stage('OWASP Dependency Check') {
+
+        stage('Docker Build') {
             steps {
-                withCredentials([string(credentialsId: 'nvd-api-key', variable: 'NVD_API_KEY')]) {
-                    dependencyCheck additionalArguments: '''
-                        --project laptop-sales
-                        --scan ./
-                        --format XML
-                        --format HTML
-                        --out ./reports
-                        --disableYarnAudit
-                        --disableNodeAudit
-                        --disableRetireJS
-                        --nvdApiKey $NVD_API_KEY
-                    ''', odcInstallation: 'OWASP-DC'
+                sh "docker build -t ${DOCKER_IMAGE}:${DOCKER_TAG} ."
+            }
+        }
+
+        stage('Docker Push') {
+            steps {
+                withCredentials([usernamePassword(
+                    credentialsId: 'docker-creds',
+                    usernameVariable: 'DOCKER_USER',
+                    passwordVariable: 'DOCKER_PASS'
+                )]) {
+                    sh """
+                        echo \$DOCKER_PASS | docker login -u \$DOCKER_USER --password-stdin
+                        docker push ${DOCKER_IMAGE}:${DOCKER_TAG}
+                        docker tag ${DOCKER_IMAGE}:${DOCKER_TAG} ${DOCKER_IMAGE}:latest
+                        docker push ${DOCKER_IMAGE}:latest
+                    """
                 }
-                dependencyCheckPublisher(
-                    pattern: '**/reports/dependency-check-report.xml'
-                )
             }
         }
     }
     post {
         always {
-            archiveArtifacts artifacts: 'reports/*.html', allowEmptyArchive: true
+            sh 'docker logout || true'
         }
     }
 }
