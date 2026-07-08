@@ -1,8 +1,5 @@
 pipeline {
     agent any
-    environment {
-        OWASP_HOME = "/var/jenkins_home/tools/org.jenkinsci.plugins.DependencyCheck.tools.DependencyCheckInstallation/OWASP-DC"
-    }
     stages {
         stage('Git Checkout') {
             steps {
@@ -14,18 +11,17 @@ pipeline {
         stage('OWASP Dependency Check') {
             steps {
                 withCredentials([string(credentialsId: 'nvd-api-key', variable: 'NVD_API_KEY')]) {
-                    sh """
-                        ${OWASP_HOME}/bin/dependency-check.sh \
-                        --project laptop-sales \
-                        --scan ./ \
-                        --format XML \
-                        --format HTML \
-                        --out ./reports \
-                        --disableYarnAudit \
-                        --disableNodeAudit \
-                        --disableRetireJS \
-                        --nvdApiKey \$NVD_API_KEY
-                    """
+                    dependencyCheck additionalArguments: '''
+                        --project laptop-sales
+                        --scan ./
+                        --format XML
+                        --format HTML
+                        --out ./reports
+                        --disableYarnAudit
+                        --disableNodeAudit
+                        --disableRetireJS
+                        --nvdApiKey $NVD_API_KEY
+                    ''', odcInstallation: 'OWASP-DC'
                 }
                 dependencyCheckPublisher(
                     pattern: '**/reports/dependency-check-report.xml'
